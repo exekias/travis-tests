@@ -1,0 +1,47 @@
+sudo: required
+dist: xenial
+services:
+  - docker
+language: go
+
+jobs:
+  include:
+    - os: linux
+      stage: test
+      before_script:
+        # install dind kubernetes
+        - wget https://github.com/kubernetes-sigs/kubeadm-dind-cluster/releases/download/v0.1.0/dind-cluster-v1.13.sh
+        - chmod +x dind-cluster-v1.13.sh
+        - ./dind-cluster-v1.13.sh up
+        # Add Kubectl directory to the PATH.
+        - export PATH="$HOME/.kubeadm-dind-cluster:$PATH"
+        # Wait for Kubernetes to be up and ready.
+        - JSONPATH='{range .items[*]}{@.metadata.name}:{range @.status.conditions[*]}{@.type}={@.status};{end}{end}'; until kubectl get nodes -o jsonpath="$JSONPATH" 2>&1 | grep -q "Ready=True"; do sleep 1; done
+      script:
+        - kubectl get po --all-namespaces
+
+    - os: linux
+      stage: test
+      before_script:
+        # Download and install kubectl (optional)
+        - curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/v1.12.0/bin/linux/amd64/kubectl && chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+        # Download and install kind using cURL
+        - curl -Lo kind https://github.com/kubernetes-sigs/kind/releases/download/0.0.1/kind-linux-amd64 && chmod +x kind && sudo mv kind /usr/local/bin/
+        # Create a new Kubernetes cluster using kind
+        - kind create cluster
+        # Set KUBECONFIG environment variable
+        - export KUBECONFIG=“$(kind get kubeconfig-path)”
+      script:
+        - kubectl get po --all-namespaces
+
+    - os: linux
+      stage: test
+      addons:
+        snaps:
+          - name: microk8s
+            classic: true
+            channel: stable
+      before_script:
+        - microk8s.start
+      script:
+        - microk8s.kubectl get po --all-namespaces
